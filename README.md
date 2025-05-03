@@ -1,4 +1,4 @@
-# Password Strength Analyzer - Try here - (https://zippy-liger-6dc81a.netlify.app)
+# Password Strength Analyzer - Try here - (https://password-strength-peach.vercel.app/)
 
 A sophisticated password strength analysis tool built with React and TypeScript that provides real-time feedback on password security.
 
