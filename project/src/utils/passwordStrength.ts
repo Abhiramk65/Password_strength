@@ -2,6 +2,12 @@ import { zxcvbn, zxcvbnOptions } from '@zxcvbn-ts/core';
 import * as zxcvbnCommonPackage from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnPackage from '@zxcvbn-ts/language-en';
 
+// Get the type of the zxcvbn result object
+type ZxcvbnResult = ReturnType<typeof zxcvbn>;
+// Get the type for the sequence array and individual items
+type ZxcvbnSequence = ZxcvbnResult['sequence'];
+type ZxcvbnSequenceItem = ZxcvbnSequence[number];
+
 // Initialize zxcvbn with language options
 const options = {
   translations: zxcvbnEnPackage.translations,
@@ -41,115 +47,107 @@ export interface PasswordStrength {
     warning: string;
     suggestions: string[];
   };
+  isPwned: boolean | null;
+  pwnedCount: number | null;
 }
 
-// Realistic attempts per second based on modern hardware and techniques
-const ATTEMPTS_PER_SECOND = {
-  onlineThrottling: 100 / 3600, // 100 per hour
-  onlineNoThrottling: 10, // 10 per second
-  offlineSlow: 1000000, // 1M per second (realistic for CPU)
-  offlineFast: 100000000000, // 100B per second (modern GPU farms)
-};
-
-// Common password patterns with their relative strength multipliers
-const PATTERNS = [
-  { pattern: /^[A-Z][a-z]+\d{2,4}[@#$%&*!?]$/, multiplier: 0.00001 }, // Password123!
-  { pattern: /^[A-Z][a-z]+[0-9@#$%&*!?]+$/, multiplier: 0.00001 }, // Password@123
-  { pattern: /^[A-Z][a-z]{5,10}\d{1,4}$/, multiplier: 0.00001 }, // Password123
-  { pattern: /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@#$%&*!?])[A-Za-z\d@#$%&*!?]{8,}$/, multiplier: 0.0001 }, // Common complexity pattern
-  { pattern: /\d{4}$/, multiplier: 0.001 }, // Ends with 4 digits
-  { pattern: /\d{2}$/, multiplier: 0.01 }, // Ends with 2 digits
-  { pattern: /[@#$%&*!?]\d+$/, multiplier: 0.001 }, // Special char followed by numbers
-];
-
-const COMMON_WORDS = [
-  'password', 'letmein', 'welcome', 'admin', 'monkey', 'dragon', 'master',
-  'football', 'baseball', 'qwerty', 'abc123', '123456', 'superman', 'batman',
-  'trustno1', 'sunshine', 'princess', 'passw0rd', 'shadow', 'michael',
-];
-
-const calculateCharacterSetSize = (password: string): number => {
-  const hasLower = /[a-z]/.test(password);
-  const hasUpper = /[A-Z]/.test(password);
-  const hasDigit = /\d/.test(password);
-  const hasSpecial = /[^a-zA-Z0-9]/.test(password);
-
-  let size = 0;
-  if (hasLower) size += 26;
-  if (hasUpper) size += 26;
-  if (hasDigit) size += 10;
-  if (hasSpecial) size += 33;
-
-  return size || 26;
-};
-
-const getPatternMultiplier = (password: string): number => {
-  const lowerPassword = password.toLowerCase();
-  let multiplier = 1;
-
-  // Check for common words
-  if (COMMON_WORDS.some(word => lowerPassword.includes(word))) {
-    multiplier *= 0.00001; // Extremely common
+// Helper function to generate specific feedback from zxcvbn sequence
+const getSpecificSuggestions = (sequence: ZxcvbnSequence): string[] => {
+  const suggestions: string[] = [];
+  if (!sequence || sequence.length === 0) {
+    return ["Use a mix of uppercase letters, lowercase letters, numbers, and symbols."]; // Default suggestion
   }
 
-  // Check for common patterns
-  for (const { pattern, multiplier: patternMultiplier } of PATTERNS) {
-    if (pattern.test(password)) {
-      multiplier *= patternMultiplier;
+  sequence.forEach((item: ZxcvbnSequenceItem) => {
+    // Limit feedback for very short tokens which might be noise
+    if (item.token.length <= 2 && item.pattern !== 'repeat') return;
+
+    switch (item.pattern) {
+      case 'dictionary': {
+        // Properties like l33t and dictionaryName only exist on dictionary items
+        // Use type narrowing via the switch case
+        suggestions.push(`Avoid common words like '${item.token}'${item.l33t ? ' (even with substitutions)' : ''}.`);
+        // Check if dictionaryName exists and equals 'user_inputs'
+        if ('dictionaryName' in item && item.dictionaryName === 'user_inputs') {
+          suggestions.push(`Avoid using personal information easily guessable from context.`);
+        }
+        break;
+      }
+      case 'sequence':
+        suggestions.push(`Avoid predictable sequences like '${item.token}'.`);
+        break;
+      case 'spatial':
+        suggestions.push(`Avoid keyboard patterns like '${item.token}' (easy to guess).`);
+        break;
+      case 'repeat': {
+         // Property 'repeatedChar' only exists on repeat items
+         suggestions.push(`Avoid repeating characters like '${item.token}'.`);
+         break;
+      }
+      case 'date':
+        suggestions.push(`Avoid using dates like '${item.token}', especially personal ones.`);
+        break;
+      // Add cases for other patterns if needed (e.g., regex, bruteforce)
+      default:
+         // Handle potential unknown patterns gracefully
+         break;
     }
+  });
+  
+  // Add a general suggestion if few specific ones were generated
+  if (suggestions.length < 2) {
+      suggestions.push("Add more characters to increase strength significantly.");
+      suggestions.push("Combine different character types (letters, numbers, symbols).");
   }
 
-  // Check for dates
-  if (/19\d{2}|20\d{2}|\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])/.test(password)) {
-    multiplier *= 0.0001;
-  }
-
-  // Check for keyboard patterns
-  const keyboardPatterns = ['qwerty', 'asdfgh', 'zxcvbn', '1234', '4321'];
-  if (keyboardPatterns.some(pattern => lowerPassword.includes(pattern))) {
-    multiplier *= 0.00001;
-  }
-
-  // Check for repeated characters
-  if (/(.)\1{2,}/.test(password)) {
-    multiplier *= 0.001;
-  }
-
-  // Check for simple substitutions
-  if (/[a@][s$][i1!][o0]/.test(lowerPassword)) {
-    multiplier *= 0.01;
-  }
-
-  // Check for sequential numbers
-  if (/(?:0123|1234|2345|3456|4567|5678|6789|9876|8765|7654|6543|5432|4321|3210)/.test(password)) {
-    multiplier *= 0.0001;
-  }
-
-  return multiplier;
+  // Deduplicate suggestions
+  return Array.from(new Set(suggestions));
 };
 
-const calculateCrackingTime = (password: string, attemptsPerSecond: number): number => {
-  if (!password) return 0;
+// Helper function to check password against HIBP Pwned Passwords API
+async function checkPwnedStatus(password: string): Promise<{ isPwned: boolean; pwnedCount: number }> {
+  try {
+    // 1. Hash the password using SHA-1
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    
+    // Convert buffer to hex string
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    // 2. Split hash for API query (k-Anonymity)
+    const prefix = hashHex.substring(0, 5);
+    const suffix = hashHex.substring(5).toUpperCase(); // API response uses uppercase suffixes
 
-  const charSetSize = calculateCharacterSetSize(password);
-  const length = password.length;
-  
-  // Base calculation using more realistic entropy
-  let entropy = Math.log2(Math.pow(charSetSize, length));
-  let combinations = Math.pow(2, entropy);
-  
-  // Apply pattern-based reductions
-  const patternMultiplier = getPatternMultiplier(password);
-  combinations *= patternMultiplier;
+    // 3. Query HIBP API
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+    if (!response.ok) {
+      throw new Error(`HIBP API error: ${response.statusText}`);
+    }
+    const text = await response.text();
 
-  // Calculate time in seconds
-  let timeInSeconds = combinations / attemptsPerSecond;
+    // 4. Check response for the suffix
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const [respSuffix, countStr] = line.split(':');
+      if (respSuffix === suffix) {
+        return { isPwned: true, pwnedCount: parseInt(countStr, 10) };
+      }
+    }
 
-  // Ensure minimum time isn't unrealistic
-  return Math.max(0.001, timeInSeconds);
-};
+    // Suffix not found
+    return { isPwned: false, pwnedCount: 0 };
+  } catch (error) {
+    console.error("Error checking pwned status:", error);
+    // Return nulls or a specific error state if the check fails
+    // For simplicity, we'll return as not pwned, but log the error
+     return { isPwned: false, pwnedCount: 0 }; // Or potentially return nulls to indicate check failure
+  }
+}
 
-export const analyzePassword = (password: string): PasswordStrength => {
+// analyzePassword now returns a Promise
+export const analyzePassword = async (password: string): Promise<PasswordStrength> => {
   if (!password) {
     return {
       score: 0,
@@ -168,25 +166,47 @@ export const analyzePassword = (password: string): PasswordStrength => {
       feedback: {
         warning: "No password provided",
         suggestions: ["Enter a password to analyze"]
-      }
+      },
+      isPwned: null, // Initial state before check
+      pwnedCount: null
     };
   }
 
-  const result = zxcvbn(password);
+  // Perform zxcvbn analysis first
+  const zxcvbnResult = zxcvbn(password);
   
-  // Calculate realistic cracking times
+  // Perform HIBP check asynchronously
+  const pwnedStatus = await checkPwnedStatus(password);
+
+  // Map zxcvbn results
   const crackTimesSeconds = {
-    onlineThrottling100perHour: calculateCrackingTime(password, ATTEMPTS_PER_SECOND.onlineThrottling),
-    onlineNoThrottling10perSecond: calculateCrackingTime(password, ATTEMPTS_PER_SECOND.onlineNoThrottling),
-    offlineSlowHashing1e4perSecond: calculateCrackingTime(password, ATTEMPTS_PER_SECOND.offlineSlow),
-    offlineFastHashing1e10perSecond: calculateCrackingTime(password, ATTEMPTS_PER_SECOND.offlineFast)
+    onlineThrottling100perHour: zxcvbnResult.crackTimesSeconds.onlineThrottling100PerHour,
+    onlineNoThrottling10perSecond: zxcvbnResult.crackTimesSeconds.onlineNoThrottling10PerSecond,
+    offlineSlowHashing1e4perSecond: zxcvbnResult.crackTimesSeconds.offlineSlowHashing1e4PerSecond,
+    offlineFastHashing1e10perSecond: zxcvbnResult.crackTimesSeconds.offlineFastHashing1e10PerSecond,
   };
 
+  const crackTimesDisplay = {
+    onlineThrottling100perHour: zxcvbnResult.crackTimesDisplay.onlineThrottling100PerHour,
+    onlineNoThrottling10perSecond: zxcvbnResult.crackTimesDisplay.onlineNoThrottling10PerSecond,
+    offlineSlowHashing1e4perSecond: zxcvbnResult.crackTimesDisplay.offlineSlowHashing1e4PerSecond,
+    offlineFastHashing1e10perSecond: zxcvbnResult.crackTimesDisplay.offlineFastHashing1e10PerSecond,
+  };
+  
+  // Map feedback, using the new helper function for suggestions
+  const feedback = {
+    warning: zxcvbnResult.feedback.warning ?? '',
+    suggestions: getSpecificSuggestions(zxcvbnResult.sequence),
+  };
+
+  // Combine results
   return {
-    score: result.score,
-    crackTimesDisplay: result.crackTimesDisplay,
+    score: zxcvbnResult.score,
+    crackTimesDisplay,
     crackTimesSeconds,
-    feedback: result.feedback,
+    feedback,
+    isPwned: pwnedStatus.isPwned,
+    pwnedCount: pwnedStatus.pwnedCount
   };
 };
 

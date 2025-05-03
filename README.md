@@ -100,3 +100,71 @@ Visit the live demo: [Password Strength Analyzer](https://zippy-liger-6dc81a.net
 - zxcvbn-ts for the core password strength estimation
 - Lucide for the beautiful icons
 - Tailwind CSS for the styling system
+
+# Password Strength Analyzer
+
+A simple web application built with React, TypeScript, and Vite to analyze the strength of passwords.
+
+## Features
+
+*   Calculates password strength score (0-4) based on `zxcvbn-ts`.
+*   Provides estimated crack times for different attack scenarios:
+    *   Online Throttled Attack (100 attempts/hour)
+    *   Online No Throttling (10 attempts/second)
+    *   Offline Slow Hash (10k hashes/second)
+    *   Offline Fast Hash (10B hashes/second)
+*   Displays visual strength meter.
+*   Offers suggestions for improvement based on `zxcvbn-ts` feedback.
+*   Includes general security recommendations.
+*   Uses Tailwind CSS for styling.
+*   Uses Lucide React for icons.
+
+## Tech Stack
+
+*   **Frontend:** React, TypeScript
+*   **Build Tool:** Vite
+*   **Password Strength:** `@zxcvbn-ts/core`
+*   **Styling:** Tailwind CSS
+*   **Icons:** Lucide React
+
+## Setup and Running
+
+1.  **Clone the repository (if applicable):**
+    ```bash
+    git clone <repository-url>
+    cd <repository-directory>
+    ```
+
+2.  **Install dependencies:**
+    Make sure you have Node.js and npm (or yarn/pnpm) installed.
+    ```bash
+    npm install
+    # or
+    # yarn install
+    # or
+    # pnpm install
+    ```
+
+3.  **Run the development server:**
+    ```bash
+    npm run dev
+    # or
+    # yarn dev
+    # or
+    # pnpm dev
+    ```
+    This will start the Vite development server, typically at `http://localhost:5173`.
+
+4.  **Build for production:**
+    ```bash
+    npm run build
+    # or
+    # yarn build
+    # or
+    # pnpm build
+    ```
+    This creates a `dist` folder with the optimized production build.
+
+## Password Strength Library
+
+This project uses the `zxcvbn-ts` library, a TypeScript port of Dropbox's realistic password strength estimator. It analyzes passwords against common dictionaries, patterns, and provides feedback along with crack time estimations. 
