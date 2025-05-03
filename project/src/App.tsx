@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Shield, Eye, EyeOff, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { analyzePassword, getScoreText, type PasswordStrength } from './utils/passwordStrength';
 import { StrengthMeter } from './components/StrengthMeter';
 import { CrackTimeDisplay } from './components/CrackTimeDisplay';
@@ -91,18 +91,31 @@ function App() {
             </div>
           </div>
 
-          {analysis?.isPwned && (
-            <div className="mt-4 p-4 bg-red-100 border border-red-300 rounded-lg flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0" />
-              <div>
-                <h3 className="font-semibold text-red-800">Warning: Password Compromised!</h3>
-                <p className="text-sm text-red-700">
-                  This password has been found in data breaches approximately {analysis.pwnedCount?.toLocaleString() ?? 'multiple'} times.
-                  It is highly recommended to choose a different password.
-                </p>
+          <div className="mt-4">
+            {analysis?.isPwned === true && (
+              <div className="p-4 bg-red-100 border border-red-300 rounded-lg flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-red-800">Warning: Password Compromised!</h3>
+                  <p className="text-sm text-red-700">
+                    This password has been found in data breaches approximately {analysis.pwnedCount?.toLocaleString() ?? 'multiple'} times.
+                    It is highly recommended to choose a different password.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {analysis?.isPwned === false && !isLoading && (
+               <div className="p-4 bg-green-50 border border-green-300 rounded-lg flex items-start gap-3">
+                 <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                 <div>
+                   <h3 className="font-semibold text-green-800">Good News!</h3>
+                   <p className="text-sm text-green-700">
+                     This password was not found in any known data breaches.
+                   </p>
+                 </div>
+              </div>
+            )}
+          </div>
 
           {analysis && !isLoading && (
             <div className="mt-6 space-y-6">
@@ -156,6 +169,12 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* Privacy Note */}
+        <p className="text-center text-xs text-gray-500 mt-4 px-6">
+          Privacy Note: Your password is analyzed locally in your browser and checked anonymously against known data breaches. It is never stored or sent to our servers.
+        </p>
+
       </div>
     </div>
   );
